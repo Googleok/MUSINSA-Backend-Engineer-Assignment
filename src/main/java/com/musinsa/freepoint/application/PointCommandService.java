@@ -8,6 +8,7 @@ import com.musinsa.freepoint.domain.earning.PointEarning;
 import com.musinsa.freepoint.domain.earning.PointEarningRepository;
 import com.musinsa.freepoint.domain.transaction.PointTransaction;
 import com.musinsa.freepoint.domain.transaction.PointTransactionRepository;
+import com.musinsa.freepoint.domain.transaction.PointTransactionType;
 import com.musinsa.freepoint.domain.wallet.MemberPointWallet;
 import com.musinsa.freepoint.domain.wallet.MemberPointWalletRepository;
 import lombok.RequiredArgsConstructor;
@@ -64,6 +65,62 @@ public class PointCommandService {
         );
     }
 
+    @Transactional
+    public CancelEarnResult cancelEarn(String originalPointKey, String memberId, String reason) {
+        PointTransaction original = transactionRepository.findByPointKey(originalPointKey)
+                .orElseThrow(() -> new BusinessException(ErrorCode.EARNING_NOT_FOUND,
+                        "적립 내역을 찾을 수 없습니다. pointKey=" + originalPointKey));
+
+        if (original.getTransactionType() != PointTransactionType.EARN) {
+            throw new BusinessException(ErrorCode.EARNING_NOT_FOUND,
+                    "적립 트랜잭션이 아닙니다. pointKey=" + originalPointKey);
+        }
+        if (!original.getMemberId().equals(memberId)) {
+            throw new BusinessException(ErrorCode.EARNING_NOT_FOUND,
+                    "회원 정보가 일치하지 않습니다. pointKey=" + originalPointKey);
+        }
+
+        MemberPointWallet wallet = walletRepository.findByMemberIdForUpdate(memberId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.INTERNAL_ERROR,
+                        "지갑을 찾을 수 없습니다. memberId=" + memberId));
+
+        PointEarning earning = earningRepository.findByTransactionId(original.getId())
+                .orElseThrow(() -> new BusinessException(ErrorCode.EARNING_NOT_FOUND,
+                        "적립 단위를 찾을 수 없습니다. transactionId=" + original.getId()));
+
+        if (earning.isUsed()) {
+            throw new BusinessException(ErrorCode.EARNING_ALREADY_USED);
+        }
+        if (earning.getCanceledAmount() > 0L) {
+            throw new BusinessException(ErrorCode.EARNING_ALREADY_CANCELED);
+        }
+
+        long cancelAmount = earning.getAvailableAmount();
+
+        String cancelPointKey = pointKeyGenerator.generate();
+        PointTransaction cancelTransaction = transactionRepository.save(
+                PointTransaction.earnCancel(
+                        cancelPointKey,
+                        memberId,
+                        cancelAmount,
+                        original.getId(),
+                        reason,
+                        null
+                )
+        );
+
+        earning.cancel();
+        wallet.decreaseBalance(cancelAmount);
+
+        return new CancelEarnResult(
+                cancelTransaction.getPointKey(),
+                original.getPointKey(),
+                memberId,
+                cancelAmount,
+                wallet.getBalance()
+        );
+    }
+
     private void validateEarnAmount(long amount) {
         if (amount < 1L) {
             throw new BusinessException(ErrorCode.INVALID_EARN_AMOUNT,
@@ -108,6 +165,15 @@ public class PointCommandService {
             long amount,
             long balance,
             LocalDateTime expiresAt
+    ) {
+    }
+
+    public record CancelEarnResult(
+            String pointKey,
+            String originalPointKey,
+            String memberId,
+            long canceledAmount,
+            long balance
     ) {
     }
 }

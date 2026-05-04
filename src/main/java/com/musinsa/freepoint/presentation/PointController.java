@@ -1,12 +1,16 @@
 package com.musinsa.freepoint.presentation;
 
 import com.musinsa.freepoint.application.PointCommandService;
+import com.musinsa.freepoint.application.PointCommandService.CancelEarnResult;
 import com.musinsa.freepoint.application.PointCommandService.EarnResult;
 import com.musinsa.freepoint.common.response.ApiResponse;
+import com.musinsa.freepoint.presentation.request.CancelEarnPointRequest;
 import com.musinsa.freepoint.presentation.request.EarnPointRequest;
+import com.musinsa.freepoint.presentation.response.CancelEarnPointResponse;
 import com.musinsa.freepoint.presentation.response.EarnPointResponse;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -29,5 +33,18 @@ public class PointController {
                 request.reason()
         );
         return ApiResponse.success(EarnPointResponse.from(result));
+    }
+
+    @PostMapping("/earn/{pointKey}/cancel")
+    public ApiResponse<CancelEarnPointResponse> cancelEarn(
+            @PathVariable("pointKey") String pointKey,
+            @Valid @RequestBody CancelEarnPointRequest request
+    ) {
+        CancelEarnResult result = pointCommandService.cancelEarn(
+                pointKey,
+                request.memberId(),
+                request.reason()
+        );
+        return ApiResponse.success(CancelEarnPointResponse.from(result));
     }
 }
