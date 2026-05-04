@@ -131,6 +131,131 @@ public class PointCommandService {
     }
 
     @Transactional
+    public CancelUseResult cancelUse(String originalUsePointKey, String memberId, long amount, String reason) {
+        if (amount < 1L) {
+            throw new BusinessException(ErrorCode.INVALID_CANCEL_AMOUNT,
+                    "취소 금액은 1 이상이어야 합니다. amount=" + amount);
+        }
+
+        PointTransaction original = transactionRepository.findByPointKey(originalUsePointKey)
+                .orElseThrow(() -> new BusinessException(ErrorCode.USE_TRANSACTION_NOT_FOUND,
+                        "사용 내역을 찾을 수 없습니다. pointKey=" + originalUsePointKey));
+
+        if (original.getTransactionType() != PointTransactionType.USE) {
+            throw new BusinessException(ErrorCode.USE_TRANSACTION_NOT_FOUND,
+                    "사용 트랜잭션이 아닙니다. pointKey=" + originalUsePointKey);
+        }
+        if (!original.getMemberId().equals(memberId)) {
+            throw new BusinessException(ErrorCode.USE_TRANSACTION_NOT_FOUND,
+                    "회원 정보가 일치하지 않습니다. pointKey=" + originalUsePointKey);
+        }
+
+        MemberPointWallet wallet = walletRepository.findByMemberIdForUpdate(memberId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.INTERNAL_ERROR,
+                        "지갑을 찾을 수 없습니다. memberId=" + memberId));
+
+        long alreadyCanceled = useAllocationRepository.sumCanceledAmountByUseTransactionId(original.getId());
+        long cancelable = original.getAmount() - alreadyCanceled;
+        if (amount > cancelable) {
+            throw new BusinessException(ErrorCode.USE_CANCEL_AMOUNT_EXCEEDED,
+                    "취소 가능 금액을 초과했습니다. 요청=" + amount + ", 취소가능=" + cancelable);
+        }
+
+        LocalDateTime now = timeProvider.now();
+        int defaultExpireDays = pointPolicyService.getDefaultExpireDays();
+
+        List<PointUseAllocation> allocations =
+                useAllocationRepository.findByUseTransactionIdOrderByIdAsc(original.getId());
+
+        List<RestoredAllocationDetail> restored = new ArrayList<>();
+        long remaining = amount;
+
+        for (PointUseAllocation alloc : allocations) {
+            if (remaining <= 0L) {
+                break;
+            }
+            long allocCancelable = alloc.getCancelableAmount();
+            if (allocCancelable <= 0L) {
+                continue;
+            }
+            long take = Math.min(remaining, allocCancelable);
+
+            PointEarning earning = earningRepository.findById(alloc.getEarningId())
+                    .orElseThrow(() -> new BusinessException(ErrorCode.EARNING_NOT_FOUND,
+                            "적립 단위를 찾을 수 없습니다. earningId=" + alloc.getEarningId()));
+
+            PointTransaction earningTx = transactionRepository.findById(earning.getTransactionId())
+                    .orElseThrow(() -> new BusinessException(ErrorCode.INTERNAL_ERROR,
+                            "원 적립 트랜잭션을 찾을 수 없습니다. id=" + earning.getTransactionId()));
+            String originalEarningPointKey = earningTx.getPointKey();
+
+            if (earning.isExpired(now)) {
+                String newEarnPointKey = pointKeyGenerator.generate();
+                PointTransaction newEarnTransaction = transactionRepository.save(
+                        PointTransaction.earn(newEarnPointKey, memberId, take, reason, null)
+                );
+                LocalDateTime newExpiresAt = now.plusDays(defaultExpireDays);
+                earningRepository.save(
+                        PointEarning.create(
+                                newEarnTransaction.getId(),
+                                memberId,
+                                PointEarnType.EXPIRED_RESTORE,
+                                take,
+                                newExpiresAt
+                        )
+                );
+                alloc.cancel(take);
+                restored.add(new RestoredAllocationDetail(
+                        originalEarningPointKey,
+                        RestoreType.NEW_EARNING,
+                        take,
+                        newEarnTransaction.getPointKey()
+                ));
+            } else {
+                earning.restore(take);
+                alloc.cancel(take);
+                restored.add(new RestoredAllocationDetail(
+                        originalEarningPointKey,
+                        RestoreType.ORIGINAL_EARNING,
+                        take,
+                        null
+                ));
+            }
+
+            remaining -= take;
+        }
+
+        if (remaining > 0L) {
+            throw new BusinessException(ErrorCode.USE_CANCEL_AMOUNT_EXCEEDED,
+                    "내부 오류: 미처리 취소 금액이 남아있습니다. remaining=" + remaining);
+        }
+
+        String cancelPointKey = pointKeyGenerator.generate();
+        PointTransaction useCancelTransaction = transactionRepository.save(
+                PointTransaction.useCancel(
+                        cancelPointKey,
+                        memberId,
+                        amount,
+                        original.getOrderNo(),
+                        original.getId(),
+                        reason,
+                        null
+                )
+        );
+
+        wallet.increaseBalance(amount);
+
+        return new CancelUseResult(
+                useCancelTransaction.getPointKey(),
+                original.getPointKey(),
+                memberId,
+                amount,
+                wallet.getBalance(),
+                restored
+        );
+    }
+
+    @Transactional
     public UseResult usePoint(String memberId, String orderNo, long amount) {
         if (amount < 1L) {
             throw new BusinessException(ErrorCode.INVALID_USE_AMOUNT);
@@ -280,6 +405,24 @@ public class PointCommandService {
     public record UseAllocationDetail(
             String earningPointKey,
             long usedAmount
+    ) {
+    }
+
+    public record CancelUseResult(
+            String pointKey,
+            String originalUsePointKey,
+            String memberId,
+            long canceledAmount,
+            long balance,
+            List<RestoredAllocationDetail> restoredAllocations
+    ) {
+    }
+
+    public record RestoredAllocationDetail(
+            String earningPointKey,
+            RestoreType restoreType,
+            long restoredAmount,
+            String newEarningPointKey
     ) {
     }
 }
