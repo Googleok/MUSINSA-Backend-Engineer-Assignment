@@ -1,4 +1,4 @@
-package com.musinsa.freepoint.application.policy;
+package com.musinsa.freepoint.application;
 
 import com.musinsa.freepoint.common.exception.BusinessException;
 import com.musinsa.freepoint.common.exception.ErrorCode;

@@ -5,6 +5,7 @@ import jakarta.validation.ConstraintViolation;
 import jakarta.validation.ConstraintViolationException;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.validation.BindException;
 import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
@@ -53,6 +54,12 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ApiResponse<Void>> handleIllegalArgument(IllegalArgumentException ex) {
         log.warn("IllegalArgumentException: {}", ex.getMessage());
         return badRequest(ex.getMessage() != null ? ex.getMessage() : ErrorCode.INVALID_REQUEST.getMessage());
+    }
+
+    @ExceptionHandler(HttpMessageNotReadableException.class)
+    public ResponseEntity<ApiResponse<Void>> handleHttpMessageNotReadable(HttpMessageNotReadableException ex) {
+        log.warn("HttpMessageNotReadableException: {}", ex.getMessage());
+        return badRequest("요청 본문을 해석할 수 없습니다.");
     }
 
     @ExceptionHandler(Exception.class)
