@@ -7,4 +7,6 @@ import java.util.Optional;
 public interface PointPolicyRepository extends JpaRepository<PointPolicy, Long> {
 
     Optional<PointPolicy> findByPolicyKeyAndEnabledTrue(PointPolicyKey policyKey);
+
+    boolean existsByPolicyKey(PointPolicyKey policyKey);
 }
