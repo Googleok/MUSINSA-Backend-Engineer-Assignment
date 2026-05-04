@@ -3,11 +3,14 @@ package com.musinsa.freepoint.presentation;
 import com.musinsa.freepoint.application.PointCommandService;
 import com.musinsa.freepoint.application.PointCommandService.CancelEarnResult;
 import com.musinsa.freepoint.application.PointCommandService.EarnResult;
+import com.musinsa.freepoint.application.PointCommandService.UseResult;
 import com.musinsa.freepoint.common.response.ApiResponse;
 import com.musinsa.freepoint.presentation.request.CancelEarnPointRequest;
 import com.musinsa.freepoint.presentation.request.EarnPointRequest;
+import com.musinsa.freepoint.presentation.request.UsePointRequest;
 import com.musinsa.freepoint.presentation.response.CancelEarnPointResponse;
 import com.musinsa.freepoint.presentation.response.EarnPointResponse;
+import com.musinsa.freepoint.presentation.response.UsePointResponse;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -46,5 +49,15 @@ public class PointController {
                 request.reason()
         );
         return ApiResponse.success(CancelEarnPointResponse.from(result));
+    }
+
+    @PostMapping("/use")
+    public ApiResponse<UsePointResponse> usePoint(@Valid @RequestBody UsePointRequest request) {
+        UseResult result = pointCommandService.usePoint(
+                request.memberId(),
+                request.orderNo(),
+                request.amount()
+        );
+        return ApiResponse.success(UsePointResponse.from(result));
     }
 }

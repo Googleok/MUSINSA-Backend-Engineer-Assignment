@@ -9,6 +9,8 @@ import com.musinsa.freepoint.domain.earning.PointEarningRepository;
 import com.musinsa.freepoint.domain.transaction.PointTransaction;
 import com.musinsa.freepoint.domain.transaction.PointTransactionRepository;
 import com.musinsa.freepoint.domain.transaction.PointTransactionType;
+import com.musinsa.freepoint.domain.usage.PointUseAllocation;
+import com.musinsa.freepoint.domain.usage.PointUseAllocationRepository;
 import com.musinsa.freepoint.domain.wallet.MemberPointWallet;
 import com.musinsa.freepoint.domain.wallet.MemberPointWalletRepository;
 import lombok.RequiredArgsConstructor;
@@ -16,6 +18,12 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -24,6 +32,7 @@ public class PointCommandService {
     private final MemberPointWalletRepository walletRepository;
     private final PointTransactionRepository transactionRepository;
     private final PointEarningRepository earningRepository;
+    private final PointUseAllocationRepository useAllocationRepository;
     private final PointPolicyService pointPolicyService;
     private final PointKeyGenerator pointKeyGenerator;
     private final TimeProvider timeProvider;
@@ -121,6 +130,87 @@ public class PointCommandService {
         );
     }
 
+    @Transactional
+    public UseResult usePoint(String memberId, String orderNo, long amount) {
+        if (amount < 1L) {
+            throw new BusinessException(ErrorCode.INVALID_USE_AMOUNT);
+        }
+
+        MemberPointWallet wallet = walletRepository.findByMemberIdForUpdate(memberId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.INSUFFICIENT_POINT,
+                        "지갑을 찾을 수 없습니다. memberId=" + memberId));
+
+        if (wallet.getBalance() < amount) {
+            throw new BusinessException(ErrorCode.INSUFFICIENT_POINT,
+                    "보유 포인트가 부족합니다. balance=" + wallet.getBalance() + ", amount=" + amount);
+        }
+
+        LocalDateTime now = timeProvider.now();
+        List<PointEarning> usableEarnings = earningRepository.findUsableEarnings(memberId, now);
+
+        List<EarningDeduction> deductions = new ArrayList<>();
+        long remaining = amount;
+        for (PointEarning earning : usableEarnings) {
+            if (remaining <= 0L) {
+                break;
+            }
+            long take = Math.min(earning.getAvailableAmount(), remaining);
+            deductions.add(new EarningDeduction(earning, take));
+            remaining -= take;
+        }
+
+        if (remaining > 0L) {
+            throw new BusinessException(ErrorCode.INSUFFICIENT_POINT,
+                    "사용 가능한 미만료 적립이 부족합니다. 요청=" + amount + ", 부족=" + remaining);
+        }
+
+        String useTxKey = pointKeyGenerator.generate();
+        PointTransaction useTransaction = transactionRepository.save(
+                PointTransaction.use(useTxKey, memberId, amount, orderNo, null, null)
+        );
+
+        for (EarningDeduction d : deductions) {
+            d.earning().use(d.amount());
+            useAllocationRepository.save(
+                    PointUseAllocation.create(
+                            useTransaction.getId(),
+                            d.earning().getId(),
+                            memberId,
+                            orderNo,
+                            d.amount()
+                    )
+            );
+        }
+
+        wallet.decreaseBalance(amount);
+
+        Set<Long> earningTxIds = new HashSet<>();
+        for (EarningDeduction d : deductions) {
+            earningTxIds.add(d.earning().getTransactionId());
+        }
+        Map<Long, String> earningTxIdToPointKey = transactionRepository.findAllById(earningTxIds).stream()
+                .collect(Collectors.toMap(PointTransaction::getId, PointTransaction::getPointKey));
+
+        List<UseAllocationDetail> details = deductions.stream()
+                .map(d -> new UseAllocationDetail(
+                        earningTxIdToPointKey.get(d.earning().getTransactionId()),
+                        d.amount()
+                ))
+                .toList();
+
+        return new UseResult(
+                useTransaction.getPointKey(),
+                memberId,
+                orderNo,
+                amount,
+                wallet.getBalance(),
+                details
+        );
+    }
+
+    private record EarningDeduction(PointEarning earning, long amount) {
+    }
+
     private void validateEarnAmount(long amount) {
         if (amount < 1L) {
             throw new BusinessException(ErrorCode.INVALID_EARN_AMOUNT,
@@ -174,6 +264,22 @@ public class PointCommandService {
             String memberId,
             long canceledAmount,
             long balance
+    ) {
+    }
+
+    public record UseResult(
+            String pointKey,
+            String memberId,
+            String orderNo,
+            long usedAmount,
+            long balance,
+            List<UseAllocationDetail> allocations
+    ) {
+    }
+
+    public record UseAllocationDetail(
+            String earningPointKey,
+            long usedAmount
     ) {
     }
 }
