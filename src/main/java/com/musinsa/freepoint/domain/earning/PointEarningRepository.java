@@ -12,6 +12,8 @@ public interface PointEarningRepository extends JpaRepository<PointEarning, Long
 
     Optional<PointEarning> findByTransactionId(Long transactionId);
 
+    List<PointEarning> findByMemberIdOrderByIdAsc(String memberId);
+
     @Query("""
             SELECT e
               FROM PointEarning e

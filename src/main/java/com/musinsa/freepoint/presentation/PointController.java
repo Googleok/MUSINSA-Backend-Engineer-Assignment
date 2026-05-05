@@ -5,17 +5,22 @@ import com.musinsa.freepoint.application.PointCommandService.CancelEarnResult;
 import com.musinsa.freepoint.application.PointCommandService.CancelUseResult;
 import com.musinsa.freepoint.application.PointCommandService.EarnResult;
 import com.musinsa.freepoint.application.PointCommandService.UseResult;
+import com.musinsa.freepoint.application.PointQueryService;
 import com.musinsa.freepoint.common.response.ApiResponse;
 import com.musinsa.freepoint.presentation.request.CancelEarnPointRequest;
 import com.musinsa.freepoint.presentation.request.CancelUsePointRequest;
 import com.musinsa.freepoint.presentation.request.EarnPointRequest;
 import com.musinsa.freepoint.presentation.request.UsePointRequest;
+import com.musinsa.freepoint.presentation.response.BalanceResponse;
 import com.musinsa.freepoint.presentation.response.CancelEarnPointResponse;
 import com.musinsa.freepoint.presentation.response.CancelUsePointResponse;
 import com.musinsa.freepoint.presentation.response.EarnPointResponse;
+import com.musinsa.freepoint.presentation.response.EarningsResponse;
+import com.musinsa.freepoint.presentation.response.TransactionsResponse;
 import com.musinsa.freepoint.presentation.response.UsePointResponse;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -28,6 +33,7 @@ import org.springframework.web.bind.annotation.RestController;
 public class PointController {
 
     private final PointCommandService pointCommandService;
+    private final PointQueryService pointQueryService;
 
     @PostMapping("/earn")
     public ApiResponse<EarnPointResponse> earn(@Valid @RequestBody EarnPointRequest request) {
@@ -76,5 +82,20 @@ public class PointController {
                 request.reason()
         );
         return ApiResponse.success(CancelUsePointResponse.from(result));
+    }
+
+    @GetMapping("/members/{memberId}/balance")
+    public ApiResponse<BalanceResponse> getBalance(@PathVariable("memberId") String memberId) {
+        return ApiResponse.success(BalanceResponse.from(pointQueryService.getBalance(memberId)));
+    }
+
+    @GetMapping("/members/{memberId}/earnings")
+    public ApiResponse<EarningsResponse> getEarnings(@PathVariable("memberId") String memberId) {
+        return ApiResponse.success(EarningsResponse.from(pointQueryService.getEarnings(memberId)));
+    }
+
+    @GetMapping("/members/{memberId}/transactions")
+    public ApiResponse<TransactionsResponse> getTransactions(@PathVariable("memberId") String memberId) {
+        return ApiResponse.success(TransactionsResponse.from(pointQueryService.getTransactions(memberId)));
     }
 }
