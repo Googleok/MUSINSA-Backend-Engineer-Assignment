@@ -1,0 +1,27 @@
+flowchart LR
+    Client[Client]
+    Route53[Route 53<br/>DNS]
+    ALB[Application Load Balancer]
+
+    subgraph VPC["VPC"]
+        direction LR
+        subgraph Public["Public Subnet"]
+            ALB
+        end
+        subgraph Private["Private Subnet"]
+            ECS["ECS Fargate<br/>Spring Boot (freepoint)"]
+            RDS[("RDS MySQL<br/>(point DB)")]
+        end
+    end
+
+    SM[Secrets Manager<br/>DB credentials]
+    CW[CloudWatch Logs / Metrics]
+
+    Client --> Route53
+    Route53 --> ALB
+    ALB -->|HTTP| ECS
+    ECS -->|JDBC| RDS
+    ECS -.->|fetch| SM
+    ECS -->|logs / metrics| CW
+    RDS -->|metrics| CW
+    ALB -->|access logs| CW

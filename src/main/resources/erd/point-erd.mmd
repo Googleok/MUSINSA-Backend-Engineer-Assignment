@@ -1,0 +1,64 @@
+erDiagram
+    MEMBER_POINT_WALLET {
+        bigint id PK
+        varchar member_id UK "회원 식별자"
+        bigint balance "현재 잔액"
+        bigint version "낙관적 락"
+        datetime created_at
+        datetime updated_at
+    }
+
+    POINT_TRANSACTION {
+        bigint id PK
+        varchar point_key UK "외부 식별 키 PNT-..."
+        varchar member_id "회원 식별자"
+        varchar transaction_type "EARN/EARN_CANCEL/USE/USE_CANCEL"
+        bigint amount "거래 금액"
+        varchar order_no "주문번호 (USE 시 필수)"
+        bigint original_transaction_id "취소 시 원본 트랜잭션 id"
+        varchar reason "사유"
+        varchar created_by "생성 주체"
+        datetime created_at
+    }
+
+    POINT_EARNING {
+        bigint id PK
+        bigint transaction_id FK "EARN 트랜잭션 id"
+        varchar member_id "회원 식별자"
+        varchar earn_type "NORMAL/MANUAL/EXPIRED_RESTORE"
+        bigint earned_amount "최초 적립 금액"
+        bigint available_amount "사용 가능 잔여 금액"
+        bigint used_amount "누적 사용 금액"
+        bigint canceled_amount "누적 취소 금액"
+        datetime expires_at "만료 시각"
+        datetime created_at
+        datetime updated_at
+    }
+
+    POINT_USE_ALLOCATION {
+        bigint id PK
+        bigint use_transaction_id FK "USE 트랜잭션 id"
+        bigint earning_id FK "차감 대상 적립 id"
+        varchar member_id "회원 식별자"
+        varchar order_no "주문번호"
+        bigint used_amount "이 적립에서 차감한 금액"
+        bigint canceled_amount "이 배분의 취소 누적 금액"
+        datetime created_at
+        datetime updated_at
+    }
+
+    POINT_POLICY {
+        bigint id PK
+        varchar policy_key UK "MAX_EARN_AMOUNT_PER_ONCE 등"
+        varchar policy_value "정책 값"
+        varchar description "설명"
+        boolean enabled "활성화 여부"
+        datetime created_at
+        datetime updated_at
+    }
+
+    MEMBER_POINT_WALLET ||--o{ POINT_TRANSACTION : "member_id 기준 거래 이력"
+    POINT_TRANSACTION ||--o| POINT_EARNING : "EARN 트랜잭션이 적립 생성"
+    POINT_TRANSACTION ||--o{ POINT_USE_ALLOCATION : "USE 트랜잭션이 사용 배분 생성"
+    POINT_EARNING ||--o{ POINT_USE_ALLOCATION : "적립이 사용 배분으로 차감됨"
+    POINT_TRANSACTION ||--o{ POINT_TRANSACTION : "취소 트랜잭션이 원본 참조"
