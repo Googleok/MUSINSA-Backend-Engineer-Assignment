@@ -260,6 +260,9 @@ public class PointCommandService {
         if (amount < 1L) {
             throw new BusinessException(ErrorCode.INVALID_USE_AMOUNT);
         }
+        if (orderNo == null || orderNo.isBlank()) {
+            throw new BusinessException(ErrorCode.ORDER_NO_REQUIRED);
+        }
 
         MemberPointWallet wallet = walletRepository.findByMemberIdForUpdate(memberId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.INSUFFICIENT_POINT,

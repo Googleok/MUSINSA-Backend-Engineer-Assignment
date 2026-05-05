@@ -284,12 +284,25 @@ class PointCommandServiceTest {
     // ============================================================
 
     @Test
-    @DisplayName("사용 실패 - 주문번호가 비어있으면 IllegalArgumentException (도메인 검증)")
+    @DisplayName("사용 실패 - 주문번호가 비어있으면 ORDER_NO_REQUIRED")
     void use_fail_when_orderNo_is_blank() {
         pointCommandService.earn("m1", 1000L, PointEarnType.NORMAL, null, null);
 
         assertThatThrownBy(() -> pointCommandService.usePoint("m1", "  ", 100L))
-                .isInstanceOf(IllegalArgumentException.class);
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.ORDER_NO_REQUIRED);
+    }
+
+    @Test
+    @DisplayName("사용 실패 - 주문번호가 null이면 ORDER_NO_REQUIRED")
+    void use_fail_when_orderNo_is_null() {
+        pointCommandService.earn("m1", 1000L, PointEarnType.NORMAL, null, null);
+
+        assertThatThrownBy(() -> pointCommandService.usePoint("m1", null, 100L))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.ORDER_NO_REQUIRED);
     }
 
     @Test
